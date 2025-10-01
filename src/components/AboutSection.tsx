@@ -28,7 +28,7 @@ export const AboutSection: React.FC = () => {
             
             <p>
               This converter tool ensures your files are perfectly optimized for your PIXORA frame, 
-              providing smooth playback and crystal-clear display quality. Whether it's family 
+              providing smooth playback and crystal-clear display quality. Whether it&apos;s family 
               vacation photos or special moment videos, we make sure they look their absolute best.
             </p>
           </div>

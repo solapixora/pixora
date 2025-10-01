@@ -65,7 +65,7 @@ export const ReviewsSection: React.FC = () => {
 
                 {/* Quote */}
                 <blockquote className="text-2xl md:text-3xl font-medium text-gray-800 text-center mb-8 leading-relaxed">
-                  "{reviewsData[currentReview].text}"
+                  &ldquo;{reviewsData[currentReview].text}&rdquo;
                 </blockquote>
 
                 {/* Customer Info */}
@@ -136,7 +136,7 @@ export const ReviewsSection: React.FC = () => {
               </div>
               
               <p className="text-gray-700 text-sm mb-4 line-clamp-3">
-                "{review.text}"
+                &ldquo;{review.text}&rdquo;
               </p>
               
               <div className="flex items-center gap-3">

@@ -210,7 +210,7 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
     if (e.dataTransfer?.files) {
       handleFileSelect(e.dataTransfer.files);
     }
-  }, []);
+  }, [handleFileSelect]);
 
   const handleReset = () => {
     // Clean up object URL to prevent memory leaks
