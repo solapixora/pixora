@@ -1,12 +1,19 @@
+'use client'
+
 import React from 'react';
 import { motion } from 'framer-motion';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface BaseButtonProps {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg' | 'xl';
   isLoading?: boolean;
+  as?: React.ElementType;
   children: React.ReactNode;
 }
+
+type ButtonProps = BaseButtonProps & 
+  Omit<React.ButtonHTMLAttributes<HTMLButtonElement> & React.AnchorHTMLAttributes<HTMLAnchorElement>, 
+  'onAnimationStart' | 'onAnimationEnd' | 'onAnimationIteration' | 'onDrag' | 'onDragStart' | 'onDragEnd'>;
 
 const buttonVariants = {
   primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-lg',
@@ -26,6 +33,7 @@ export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
   isLoading = false,
+  as = 'button',
   children,
   className = '',
   disabled,
@@ -35,8 +43,10 @@ export const Button: React.FC<ButtonProps> = ({
   const variantClasses = buttonVariants[variant];
   const sizeClasses = sizeVariants[size];
 
+  const Component = motion.create(as);
+
   return (
-    <motion.button
+    <Component
       whileHover={{ scale: disabled || isLoading ? 1 : 1.02 }}
       whileTap={{ scale: disabled || isLoading ? 1 : 0.98 }}
       className={`${baseClasses} ${variantClasses} ${sizeClasses} ${className}`}
@@ -66,6 +76,6 @@ export const Button: React.FC<ButtonProps> = ({
         </svg>
       )}
       {children}
-    </motion.button>
+    </Component>
   );
 };

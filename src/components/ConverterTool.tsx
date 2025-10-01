@@ -1,9 +1,13 @@
+'use client'
+
 import React, { useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UploadIcon, CheckCircleIcon } from './ui/Icons';
 import { Button } from './ui/Button';
 import { SectionWrapper } from './ui/SectionWrapper';
 import { formatFileSize } from '../utils/helpers';
+import * as heic2any from 'heic2any';
+// Using server-side conversion via /api/convert (fluent-ffmpeg)
 
 interface ProcessedFile {
   name: string;
@@ -19,6 +23,8 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState(0);
+  
 
   const handleFileProcessing = async (selectedFile: File) => {
     if (!selectedFile) return;
@@ -27,24 +33,132 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
     setProcessedFile(null);
     setError("");
     setIsProcessing(true);
+    setProgress(0);
 
     try {
-      // Simulate backend processing
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const fileName = selectedFile.name.toLowerCase();
+      const isHEIC = fileName.endsWith('.heic') || fileName.endsWith('.heif');
+      const isVideo = selectedFile.type.startsWith("video/") || fileName.endsWith('.mov') || fileName.endsWith('.mp4');
+      const isImage = selectedFile.type.startsWith("image/") || isHEIC;
+      
+      let processedBlob: Blob;
+      let newName: string;
+      let ext: string;
 
-      const isVideo = selectedFile.type.startsWith("video/");
-      const ext = isVideo ? "mp4" : "jpg";
-      const newName = selectedFile.name.replace(/\.[^/.]+$/, "") + `_pixora-ready.${ext}`;
-      const compressionRatio = isVideo ? 0.65 : 0.45;
-      const compressedSize = Math.round(selectedFile.size * compressionRatio);
+      if (isImage) {
+        let imageFile = selectedFile;
+        
+        // Convert HEIC/HEIF to JPEG first
+        if (isHEIC) {
+          setProgress(10);
+          const convertedBlob = await heic2any.default({
+            blob: selectedFile,
+            toType: 'image/jpeg',
+            quality: 0.9
+          }) as Blob;
+          imageFile = new File([convertedBlob], selectedFile.name.replace(/\.(heic|heif)$/i, '.jpg'), {
+            type: 'image/jpeg'
+          });
+          setProgress(30);
+        }
+        
+        // Process image: convert to JPEG and compress
+        const img = new Image();
+        const imgUrl = URL.createObjectURL(imageFile);
+        
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => {
+            URL.revokeObjectURL(imgUrl);
+            resolve();
+          };
+          img.onerror = reject;
+          img.src = imgUrl;
+        });
+
+        // Create canvas for compression
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d')!;
+        
+        // Maintain aspect ratio while limiting max dimensions
+        const maxDimension = 1920;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob with compression
+        processedBlob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.85);
+        });
+        
+        setProgress(100);
+        ext = 'jpg';
+        newName = selectedFile.name.replace(/\.[^/.]+$/, "") + `_pixora-ready.${ext}`;
+      } else if (isVideo) {
+        // Upload to server for conversion using fluent-ffmpeg
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        const { blob, filename } = await new Promise<{ blob: Blob; filename: string | null }>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', '/api/convert');
+          xhr.responseType = 'blob';
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = Math.round((e.loaded / e.total) * 80); // upload up to 80%
+              setProgress(Math.min(80, Math.max(0, pct)));
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error during upload'));
+          xhr.onabort = () => reject(new Error('Upload aborted'));
+          xhr.onloadstart = () => setProgress((p) => Math.max(p, 5));
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const cd = xhr.getResponseHeader('Content-Disposition');
+              let fname: string | null = null;
+              if (cd) {
+                const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+                fname = decodeURIComponent((match?.[1] || match?.[2] || '').trim());
+                if (!fname) fname = null;
+              }
+              resolve({ blob: xhr.response, filename: fname });
+            } else {
+              reject(new Error(`Server responded with ${xhr.status}`));
+            }
+          };
+          xhr.send(formData);
+        });
+
+        processedBlob = blob;
+        ext = 'mp4';
+        newName = filename || selectedFile.name.replace(/\.[^/.]+$/, "") + `_pixora-ready.${ext}`;
+        setProgress(100);
+      } else {
+        throw new Error('Unsupported file type');
+      }
+
+      const downloadUrl = URL.createObjectURL(processedBlob);
 
       setProcessedFile({
         name: newName,
         originalSize: selectedFile.size,
-        newSize: compressedSize,
-        downloadUrl: URL.createObjectURL(selectedFile),
+        newSize: processedBlob.size,
+        downloadUrl: downloadUrl,
       });
     } catch (err) {
+      console.error('Processing error:', err);
       setError("Failed to process file. Please try again.");
     } finally {
       setIsProcessing(false);
@@ -61,9 +175,14 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
         return;
       }
 
-      // Validate file type
+      // Validate file type - check MIME type or file extension
       const validTypes = ['image/', 'video/'];
-      if (!validTypes.some(type => selectedFile.type.startsWith(type))) {
+      const validExtensions = ['.heic', '.heif', '.mov', '.mp4', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+      const fileName = selectedFile.name.toLowerCase();
+      const hasValidType = validTypes.some(type => selectedFile.type.startsWith(type));
+      const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+      
+      if (!hasValidType && !hasValidExtension) {
         setError("Please select a valid image or video file");
         return;
       }
@@ -94,6 +213,11 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
   }, []);
 
   const handleReset = () => {
+    // Clean up object URL to prevent memory leaks
+    if (processedFile?.downloadUrl) {
+      URL.revokeObjectURL(processedFile.downloadUrl);
+    }
+    
     setFile(null);
     setProcessedFile(null);
     setError("");
@@ -227,9 +351,10 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
                   Converting and optimizing for your PIXORA frame
                 </p>
 
-                <div className="bg-gray-100 rounded-full h-2 w-64 mx-auto">
-                  <div className="bg-blue-600 h-2 rounded-full w-full animate-pulse" />
+                <div className="bg-gray-100 rounded-full h-2 w-64 mx-auto overflow-hidden">
+                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${progress}%` }} />
                 </div>
+                <p className="mt-2 text-sm text-gray-600">{progress}%</p>
               </motion.div>
             ) : (
               <motion.div
@@ -286,16 +411,13 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                  <Button
-                    as="a"
+                  <a
                     href={processedFile!.downloadUrl}
                     download={processedFile!.name}
-                    variant="primary"
-                    size="lg"
-                    className="w-full sm:w-auto"
+                    className="relative inline-flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 px-6 py-3 text-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-lg w-full sm:w-auto text-center"
                   >
                     Download Converted File
-                  </Button>
+                  </a>
                   
                   <Button
                     onClick={handleReset}

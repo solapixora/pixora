@@ -1,3 +1,5 @@
+'use client'
+
 import React from 'react';
 import { motion } from 'framer-motion';
 
@@ -29,25 +31,26 @@ const sectionVariant = {
     y: 0, 
     transition: { 
       duration: 0.6, 
-      ease: "easeOut",
+      ease: "easeOut" as const,
       staggerChildren: 0.1
     } 
   },
-};
+} as const;
 
-export const SectionWrapper: React.FC<SectionWrapperProps> = ({
+export const SectionWrapper = React.forwardRef<HTMLElement, SectionWrapperProps>(({
   id,
   className = '',
   children,
   background = 'white',
   padding = 'lg',
-}) => {
+}, ref) => {
   const backgroundClasses = backgroundVariants[background];
   const paddingClasses = paddingVariants[padding];
 
   return (
     <motion.section
       id={id}
+      ref={ref}
       className={`w-full ${backgroundClasses} ${paddingClasses} ${className}`}
       variants={sectionVariant}
       initial="hidden"
@@ -59,7 +62,9 @@ export const SectionWrapper: React.FC<SectionWrapperProps> = ({
       </div>
     </motion.section>
   );
-};
+});
+
+SectionWrapper.displayName = 'SectionWrapper';
 
 export const SectionTitle: React.FC<{ 
   children: React.ReactNode; 
