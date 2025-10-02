@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
-import ffprobeInstaller from '@ffprobe-installer/ffprobe';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
@@ -29,7 +28,6 @@ export async function OPTIONS() {
 
 // Configure ffmpeg binary path
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
 export async function POST(req: Request) {
   let inputPath = '';

@@ -30,7 +30,6 @@ const nextConfig = {
       config.externals = config.externals || [];
       config.externals.push({
         '@ffmpeg-installer/ffmpeg': 'commonjs @ffmpeg-installer/ffmpeg',
-        '@ffprobe-installer/ffprobe': 'commonjs @ffprobe-installer/ffprobe',
         'fluent-ffmpeg': 'commonjs fluent-ffmpeg',
       });
     }
