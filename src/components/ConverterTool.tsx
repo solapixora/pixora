@@ -118,6 +118,10 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', '/api/convert');
           xhr.responseType = 'blob';
+
+          // Set headers for CORS compliance
+          xhr.setRequestHeader('Accept', 'application/json, video/mp4, */*');
+
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
               const pct = Math.round((e.loaded / e.total) * 80); // upload up to 80%

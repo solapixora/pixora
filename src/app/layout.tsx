@@ -2,11 +2,11 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import '../index.css'
 
-// const inter = Inter({ 
-//   subsets: ['latin'],
-//   weight: ['300', '400', '500', '600', '700', '800', '900'],
-//   display: 'swap',
-// })
+const inter = Inter({ 
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800', '900'],
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'PIXORA - Image & Video Converter',
@@ -19,8 +19,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    // <html lang="en" className={inter.className} style={{ scrollBehavior: 'smooth' }}>
-    <html lang="en" style={{ scrollBehavior: 'smooth' }}>
+    <html lang="en" className={inter.className} style={{ scrollBehavior: 'smooth' }}>
+    {/* <html lang="en" style={{ scrollBehavior: 'smooth' }}> */}
       <body className="antialiased overflow-x-hidden bg-[#FAFAFA] text-[#1F2937]">
         <style dangerouslySetInnerHTML={{ __html: `
           /* Custom scrollbar */
