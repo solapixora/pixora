@@ -5,6 +5,9 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { promises as fs } from 'fs';
+import { createWriteStream } from 'fs';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 // Ensure we run on the Node.js runtime
 export const runtime = 'nodejs';
@@ -36,25 +39,50 @@ export async function POST(req: Request) {
   try {
     const formData = await req.formData();
     const file = formData.get('file');
+    const url = formData.get('url');
 
-    if (!file || !(file instanceof Blob)) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
-    }
-
-    // Extract original file name if available
-    const originalName = (file as any)?.name || 'input';
-    const inputExt = path.extname(originalName) || '.bin';
-    const baseName = path.basename(originalName, inputExt);
-
-    // Write incoming file to a temporary location
+    // Prepare temp paths
     const tmpDir = os.tmpdir();
     const id = crypto.randomUUID();
-    inputPath = path.join(tmpDir, `pixora-${id}${inputExt}`);
-    outputPath = path.join(tmpDir, `pixora-${id}-out.mp4`);
+    let originalName = 'input';
+    let inputExt = '.bin';
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    await fs.writeFile(inputPath, buffer);
+    // Case 1: URL provided (preferred for large files to avoid 413)
+    if (typeof url === 'string' && url.startsWith('http')) {
+      try {
+        const u = new URL(url);
+        const urlPath = u.pathname || '';
+        const urlExt = path.extname(urlPath);
+        inputExt = urlExt || '.bin';
+        originalName = path.basename(urlPath) || 'input';
+      } catch {}
+
+      inputPath = path.join(tmpDir, `pixora-${id}${inputExt}`);
+      outputPath = path.join(tmpDir, `pixora-${id}-out.mp4`);
+
+      const res = await fetch(url);
+      if (!res.ok || !res.body) {
+        return NextResponse.json({ error: 'Failed to download input URL' }, { status: 400 });
+      }
+      const nodeStream = Readable.fromWeb(res.body as any);
+      await pipeline(nodeStream, createWriteStream(inputPath));
+    }
+    // Case 2: Multipart file uploaded (subject to platform size limits)
+    else {
+      if (!file || !(file instanceof Blob)) {
+        return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+      }
+      // Extract original file name if available
+      originalName = (file as any)?.name || 'input';
+      inputExt = path.extname(originalName) || '.bin';
+
+      inputPath = path.join(tmpDir, `pixora-${id}${inputExt}`);
+      outputPath = path.join(tmpDir, `pixora-${id}-out.mp4`);
+
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      await fs.writeFile(inputPath, buffer);
+    }
 
     // Run ffmpeg to transcode to MP4 (H.264/AAC) with 1080p max height
     // Only downscale if larger than 1080p, never upscale, maintain aspect ratio
@@ -81,6 +109,7 @@ export async function POST(req: Request) {
     });
 
     const outputBuffer = await fs.readFile(outputPath);
+    const baseName = path.basename(originalName, inputExt);
     const filename = `${baseName}_pixora-ready.mp4`;
 
     return new NextResponse(outputBuffer, {

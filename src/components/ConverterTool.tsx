@@ -24,6 +24,7 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState(0);
+  const [urlInput, setUrlInput] = useState("");
   
 
   const handleFileProcessing = async (selectedFile: File) => {
@@ -74,6 +75,53 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
             URL.revokeObjectURL(imgUrl);
             resolve();
           };
+
+  const handleUrlProcessing = async () => {
+    if (typeof window === 'undefined') return;
+    const url = urlInput.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setError("Please enter a valid http(s) URL");
+      return;
+    }
+
+    setFile(null);
+    setProcessedFile(null);
+    setError("");
+    setIsProcessing(true);
+    setProgress(5);
+
+    try {
+      const fd = new FormData();
+      fd.append('url', url);
+
+      const res = await fetch('/api/convert', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+
+      const cd = res.headers.get('Content-Disposition');
+      let fname: string | null = null;
+      if (cd) {
+        const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+        fname = decodeURIComponent((match?.[1] || match?.[2] || '').trim());
+        if (!fname) fname = null;
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+
+      setProcessedFile({
+        name: fname || 'video_pixora-ready.mp4',
+        originalSize: blob.size,
+        newSize: blob.size,
+        downloadUrl,
+      });
+      setProgress(100);
+    } catch (err) {
+      console.error('URL processing error:', err);
+      setError('Failed to process video from URL. Ensure the URL is publicly accessible and points to a video file.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
           img.onerror = reject;
           img.src = imgUrl;
         });
@@ -110,48 +158,55 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
         ext = 'jpg';
         newName = selectedFile.name.replace(/\.[^/.]+$/, "") + `_pixora-ready.${ext}`;
       } else if (isVideo) {
-        // Upload to server for conversion using fluent-ffmpeg
-        const formData = new FormData();
-        formData.append('file', selectedFile);
+        // Avoid 413 by using external storage for large files
+        const LARGE_LIMIT = Math.floor(4.5 * 1024 * 1024); // ~4.5MB
 
-        const { blob, filename } = await new Promise<{ blob: Blob; filename: string | null }>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', '/api/convert');
-          xhr.responseType = 'blob';
+        if (selectedFile.size > LARGE_LIMIT) {
+          throw new Error('Video exceeds platform upload limit. Please use a smaller file or provide a public URL for the video so the server can download it.');
+        } else {
+          // Small files: direct upload to API using XHR
+          const formData = new FormData();
+          formData.append('file', selectedFile);
 
-          // Set headers for CORS compliance
-          xhr.setRequestHeader('Accept', 'application/json, video/mp4, */*');
+          const { blob, filename } = await new Promise<{ blob: Blob; filename: string | null }>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/convert');
+            xhr.responseType = 'blob';
 
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-              const pct = Math.round((e.loaded / e.total) * 80); // upload up to 80%
-              setProgress(Math.min(80, Math.max(0, pct)));
-            }
-          };
-          xhr.onerror = () => reject(new Error('Network error during upload'));
-          xhr.onabort = () => reject(new Error('Upload aborted'));
-          xhr.onloadstart = () => setProgress((p) => Math.max(p, 5));
-          xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              const cd = xhr.getResponseHeader('Content-Disposition');
-              let fname: string | null = null;
-              if (cd) {
-                const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
-                fname = decodeURIComponent((match?.[1] || match?.[2] || '').trim());
-                if (!fname) fname = null;
+            // Set headers for CORS compliance
+            xhr.setRequestHeader('Accept', 'application/json, video/mp4, */*');
+
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 80); // upload up to 80%
+                setProgress(Math.min(80, Math.max(0, pct)));
               }
-              resolve({ blob: xhr.response, filename: fname });
-            } else {
-              reject(new Error(`Server responded with ${xhr.status}`));
-            }
-          };
-          xhr.send(formData);
-        });
+            };
+            xhr.onerror = () => reject(new Error('Network error during upload'));
+            xhr.onabort = () => reject(new Error('Upload aborted'));
+            xhr.onloadstart = () => setProgress((p) => Math.max(p, 5));
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                const cd = xhr.getResponseHeader('Content-Disposition');
+                let fname: string | null = null;
+                if (cd) {
+                  const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+                  fname = decodeURIComponent((match?.[1] || match?.[2] || '').trim());
+                  if (!fname) fname = null;
+                }
+                resolve({ blob: xhr.response, filename: fname });
+              } else {
+                reject(new Error(`Server responded with ${xhr.status}`));
+              }
+            };
+            xhr.send(formData);
+          });
 
-        processedBlob = blob;
-        ext = 'mp4';
-        newName = filename || selectedFile.name.replace(/\.[^/.]+$/, "") + `_pixora-ready.${ext}`;
-        setProgress(100);
+          processedBlob = blob;
+          ext = 'mp4';
+          newName = filename || selectedFile.name.replace(/\.[^/.]+$/, "") + `_pixora-ready.${ext}`;
+          setProgress(100);
+        }
       } else {
         throw new Error('Unsupported file type');
       }
@@ -167,6 +222,53 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
     } catch (err) {
       console.error('Processing error:', err);
       setError("Failed to process file. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleUrlProcessing = async () => {
+    if (typeof window === 'undefined') return;
+    const url = urlInput.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setError("Please enter a valid http(s) URL");
+      return;
+    }
+
+    setFile(null);
+    setProcessedFile(null);
+    setError("");
+    setIsProcessing(true);
+    setProgress(5);
+
+    try {
+      const fd = new FormData();
+      fd.append('url', url);
+
+      const res = await fetch('/api/convert', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+
+      const cd = res.headers.get('Content-Disposition');
+      let fname: string | null = null;
+      if (cd) {
+        const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(cd);
+        fname = decodeURIComponent((match?.[1] || match?.[2] || '').trim());
+        if (!fname) fname = null;
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+
+      setProcessedFile({
+        name: fname || 'video_pixora-ready.mp4',
+        originalSize: blob.size,
+        newSize: blob.size,
+        downloadUrl,
+      });
+      setProgress(100);
+    } catch (err) {
+      console.error('URL processing error:', err);
+      setError('Failed to process video from URL. Ensure the URL is publicly accessible and points to a video file.');
     } finally {
       setIsProcessing(false);
     }
@@ -317,6 +419,7 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
                     <span>• Max size: 100MB</span>
                     <span>• Free conversion</span>
                     <span>• Secure & private</span>
+                    <span>• Large videos: paste URL below</span>
                   </div>
                 </div>
 
@@ -334,6 +437,26 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
                   <p className="text-sm text-gray-500">
                     🔒 Files are processed securely and automatically deleted after conversion
                   </p>
+                </div>
+
+                {/* URL Conversion */}
+                <div className="mt-6 flex flex-col sm:flex-row items-center gap-3">
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleUrlProcessing(); }}
+                    placeholder="Paste public video URL (https://...)"
+                    className="w-full sm:flex-1 rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={handleUrlProcessing}
+                    className="w-full sm:w-auto"
+                  >
+                    Convert from URL
+                  </Button>
                 </div>
               </motion.div>
             ) : isProcessing ? (
