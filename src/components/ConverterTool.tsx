@@ -6,7 +6,7 @@ import { UploadIcon, CheckCircleIcon } from './ui/Icons';
 import { Button } from './ui/Button';
 import { SectionWrapper } from './ui/SectionWrapper';
 import { formatFileSize } from '../utils/helpers';
-import * as heic2any from 'heic2any';
+// import * as heic2any from 'heic2any';
 // Using server-side conversion via /api/convert (fluent-ffmpeg)
 
 interface ProcessedFile {
@@ -27,6 +27,7 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
   
 
   const handleFileProcessing = async (selectedFile: File) => {
+    if (typeof window === 'undefined') return;
     if (!selectedFile) return;
     
     setFile(selectedFile);
@@ -48,6 +49,8 @@ export const ConverterTool = React.forwardRef<HTMLElement>((props, ref) => {
       if (isImage) {
         let imageFile = selectedFile;
         
+        const heic2any =(await import('heic2any'));
+
         // Convert HEIC/HEIF to JPEG first
         if (isHEIC) {
           setProgress(10);

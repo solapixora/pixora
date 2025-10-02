@@ -1,16 +1,22 @@
 'use client'
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowUpIcon } from './ui/Icons';
 import { scrollToTop } from '../utils/helpers';
 
 export const Footer: React.FC = () => {
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   return (
     <>
       {/* Scroll to Top Button */}
       <motion.button
-        onClick={scrollToTop}
+        onClick={isClient ? scrollToTop : undefined}
         className="fixed bottom-8 right-8 bg-blue-600 text-white p-4 rounded-full shadow-2xl hover:bg-blue-700 transition-all duration-300 hover:scale-110 z-50"
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
