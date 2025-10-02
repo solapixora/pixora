@@ -9,6 +9,23 @@ import { promises as fs } from 'fs';
 
 // Ensure we run on the Node.js runtime
 export const runtime = 'nodejs';
+// Ensure no static optimization/caching interferes
+export const dynamic = 'force-dynamic';
+// Allow longer processing for ffmpeg
+export const maxDuration = 60;
+
+// Handle CORS preflight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
+    },
+  });
+}
 
 // Configure ffmpeg binary path
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -74,6 +91,9 @@ export async function POST(req: Request) {
         'Content-Type': 'video/mp4',
         'Content-Disposition': `attachment; filename="${filename}"`,
         'Cache-Control': 'no-store',
+        // CORS headers (useful if used cross-origin)
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Disposition',
       },
     });
   } catch (err: any) {
